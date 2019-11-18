@@ -24,6 +24,7 @@ import click
 import toml
 
 from streamlit import util
+from streamlit import config
 from streamlit.logger import get_logger
 
 LOGGER = get_logger(__name__)
@@ -99,7 +100,7 @@ class Credentials(object):
             )
 
         self.activation = None
-        self._conf_file = util.get_streamlit_file_path("credentials.toml")
+        self._conf_file = _get_credential_file_path()
 
         Credentials._singleton = self
 
@@ -133,7 +134,7 @@ class Credentials(object):
                 % (self._conf_file)
             )
 
-    def check_activated(self, auto_resolve=False):
+    def _check_activated(self, auto_resolve=True):
         """Check if streamlit is activated.
 
         Used by `streamlit run script.py`
@@ -163,6 +164,15 @@ class Credentials(object):
 
     def save(self):
         """Save to toml file."""
+        # Create intermediate directories if necessary
+        try:
+            os.makedirs(os.path.dirname(self._conf_file))
+        except Exception:
+            # Python 3 supports exist_ok=True which avoids the try/except,
+            # but Python 2 does not.
+            pass
+
+        # Write the file
         data = {"email": self.activation.email}
         with open(self._conf_file, "w") as f:
             toml.dump({"general": data}, f)
@@ -189,7 +199,6 @@ class Credentials(object):
             activated = False
 
             while not activated:
-
                 email = click.prompt(
                     text=EMAIL_PROMPT, prompt_suffix="", default="", show_default=False
                 )
@@ -235,3 +244,27 @@ def _exit(message):  # pragma: nocover
     """Exit program with error."""
     LOGGER.error(message)
     sys.exit(-1)
+
+
+def _get_credential_file_path():
+    return util.get_streamlit_file_path("credentials.toml")
+
+
+def _check_credential_file_exists():
+    return os.path.exists(_get_credential_file_path())
+
+
+def check_credentials():
+    """Check credentials and potentially activate.
+
+    Note
+    ----
+    If there is no credential file and we are in headless mode, we should not
+    check, since credential would be automatically set to an empty string.
+
+    """
+    from streamlit import config
+
+    if not _check_credential_file_exists() and config.get_option("server.headless"):
+        return
+    Credentials.get_current()._check_activated()

@@ -13,11 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Config System Unittest."""
-
 # Python 2/3 compatibility
 from __future__ import print_function, division, unicode_literals, absolute_import
+
+import os
+
 from streamlit.compatibility import setup_2_3_shims
+from streamlit.util import CONFIG_FOLDER_NAME
 
 setup_2_3_shims(globals())
 
@@ -29,7 +31,7 @@ from collections import namedtuple
 import requests
 import pytest
 import requests_mock
-from mock import patch, mock_open, mock, MagicMock
+from mock import patch, mock_open, MagicMock
 import plotly.graph_objs as go
 
 from streamlit import util
@@ -90,18 +92,21 @@ class UtilTest(unittest.TestCase):
     @patch("streamlit.credentials.util.get_streamlit_file_path", mock_get_path)
     def test_streamlit_write(self):
         """Test streamlit.util.streamlit.write."""
-        with patch("streamlit.util.open", mock_open()) as p, util.streamlit_write(
-            FILENAME
-        ) as output:
+
+        dirname = os.path.dirname(util.get_streamlit_file_path(FILENAME))
+        with patch("streamlit.util.open", mock_open()) as open, patch(
+            "streamlit.util.os.makedirs"
+        ) as makedirs, util.streamlit_write(FILENAME) as output:
             output.write("some data")
-            p().write.assert_called_once_with("some data")
+            open().write.assert_called_once_with("some data")
+            makedirs.assert_called_once_with(dirname)
 
     @patch("streamlit.credentials.util.get_streamlit_file_path", mock_get_path)
     def test_streamlit_write_exception(self):
         """Test streamlit.util.streamlit.write."""
         with patch("streamlit.util.open", mock_open()) as p, patch(
-            "streamlit.util.platform.system"
-        ) as system:
+            "streamlit.util.os.makedirs"
+        ), patch("streamlit.util.platform.system") as system:
             system.return_value = "Darwin"
             p.side_effect = OSError(errno.EINVAL, "[Errno 22] Invalid argument")
             with pytest.raises(util.Error) as e, util.streamlit_write(
@@ -115,58 +120,6 @@ class UtilTest(unittest.TestCase):
             )
             self.assertEqual(str(e.value), error_msg)
 
-    def test_list_is_plotly_chart(self):
-        trace0 = go.Scatter(x=[1, 2, 3, 4], y=[10, 15, 13, 17])
-        trace1 = go.Scatter(x=[1, 2, 3, 4], y=[16, 5, 11, 9])
-        data = [trace0, trace1]
-
-        res = util.is_plotly_chart(data)
-        self.assertTrue(res)
-
-    def test_data_dict_is_plotly_chart(self):
-        trace0 = go.Scatter(x=[1, 2, 3, 4], y=[10, 15, 13, 17])
-        trace1 = go.Scatter(x=[1, 2, 3, 4], y=[16, 5, 11, 9])
-        d = {"data": [trace0, trace1]}
-
-        res = util.is_plotly_chart(d)
-        self.assertTrue(res)
-
-    def test_dirty_data_dict_is_not_plotly_chart(self):
-        trace0 = go.Scatter(x=[1, 2, 3, 4], y=[10, 15, 13, 17])
-        trace1 = go.Scatter(x=[1, 2, 3, 4], y=[16, 5, 11, 9])
-        d = {"data": [trace0, trace1], "foo": "bar"}  # Illegal property!
-
-        res = util.is_plotly_chart(d)
-        self.assertFalse(res)
-
-    def test_layout_dict_is_not_plotly_chart(self):
-        d = {
-            # Missing a component with a graph object!
-            "layout": {"width": 1000}
-        }
-
-        res = util.is_plotly_chart(d)
-        self.assertFalse(res)
-
-    def test_fig_is_plotly_chart(self):
-        trace1 = go.Scatter(x=[1, 2, 3, 4], y=[16, 5, 11, 9])
-
-        # Plotly 3.7 needs to read the config file at /home/.plotly when
-        # creating an image. So let's mock that part of the Figure creation:
-        with patch("plotly.offline.offline._get_jconfig") as mock:
-            mock.return_value = {}
-            fig = go.Figure(data=[trace1])
-
-        res = util.is_plotly_chart(fig)
-        self.assertTrue(res)
-
-    def test_is_namedtuple(self):
-        Boy = namedtuple("Boy", ("name", "age"))
-        John = Boy("John", "29")
-
-        res = util.is_namedtuple(John)
-        self.assertTrue(res)
-
     def test_get_external_ip(self):
         # Test success
         with requests_mock.mock() as m:
@@ -179,3 +132,120 @@ class UtilTest(unittest.TestCase):
         with requests_mock.mock() as m:
             m.get(util._AWS_CHECK_IP, exc=requests.exceptions.ConnectTimeout)
             self.assertEqual(None, util.get_external_ip())
+
+    def test_get_project_streamlit_file_path(self):
+        expected = os.path.join(os.getcwd(), CONFIG_FOLDER_NAME, "some/random/file")
+
+        self.assertEqual(
+            expected, util.get_project_streamlit_file_path("some/random/file")
+        )
+
+        self.assertEqual(
+            expected, util.get_project_streamlit_file_path("some", "random", "file")
+        )
+
+
+class FileIsInFolderTest(unittest.TestCase):
+    """Tests for file_is_in_folder."""
+
+    def test_file_in_folder(self):
+        # Test with and without trailing slash
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "/a/b/c/")
+        self.assertTrue(ret)
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "/a/b/c")
+        self.assertTrue(ret)
+
+    def test_file_in_subfolder(self):
+        # Test with and without trailing slash
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "/a")
+        self.assertTrue(ret)
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "/a/")
+        self.assertTrue(ret)
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "/a/b")
+        self.assertTrue(ret)
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "/a/b/")
+        self.assertTrue(ret)
+
+    def test_file_not_in_folder(self):
+        # Test with and without trailing slash
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "/d/e/f/")
+        self.assertFalse(ret)
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "/d/e/f")
+        self.assertFalse(ret)
+
+    def test_rel_file_not_in_folder(self):
+        # Test with and without trailing slash
+        ret = util.file_is_in_folder_glob("foo.py", "/d/e/f/")
+        self.assertFalse(ret)
+        ret = util.file_is_in_folder_glob("foo.py", "/d/e/f")
+        self.assertFalse(ret)
+
+    def test_file_in_folder_glob(self):
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "**/c")
+        self.assertTrue(ret)
+
+    def test_file_not_in_folder_glob(self):
+        ret = util.file_is_in_folder_glob("/a/b/c/foo.py", "**/f")
+        self.assertFalse(ret)
+
+    def test_rel_file_not_in_folder_glob(self):
+        ret = util.file_is_in_folder_glob("foo.py", "**/f")
+        self.assertFalse(ret)
+
+
+class GitHubUrlTest(unittest.TestCase):
+    GITHUB_URLS = [
+        (
+            "https://github.com/aritropaul/streamlit/blob/b72adbcf00c91775db14e739e2ea33d6df9079c3/lib/streamlit/cli.py",
+            "https://github.com/aritropaul/streamlit/raw/b72adbcf00c91775db14e739e2ea33d6df9079c3/lib/streamlit/cli.py",
+        ),
+        (
+            "https://github.com/streamlit/streamlit/blob/develop/examples/video.py",
+            "https://github.com/streamlit/streamlit/raw/develop/examples/video.py",
+        ),
+        (
+            "https://github.com/text2gene/text2gene/blob/master/sbin/clinvar.hgvs_citations.sql",
+            "https://github.com/text2gene/text2gene/raw/master/sbin/clinvar.hgvs_citations.sql",
+        ),
+        (
+            "https://github.com/mekarpeles/math.mx/blob/master/README.md",
+            "https://github.com/mekarpeles/math.mx/raw/master/README.md",
+        ),
+    ]
+
+    GIST_URLS = [
+        (
+            "https://gist.github.com/nthmost/b521b80fbd834e67b3f5e271e9548232",
+            "https://gist.github.com/nthmost/b521b80fbd834e67b3f5e271e9548232/raw",
+        ),
+        (
+            "https://gist.github.com/scottyallen/1888e058261fc21f184f6be192bbe131",
+            "https://gist.github.com/scottyallen/1888e058261fc21f184f6be192bbe131/raw",
+        ),
+        (
+            "https://gist.github.com/tvst/faf057abbedaccaa70b48216a1866cdd",
+            "https://gist.github.com/tvst/faf057abbedaccaa70b48216a1866cdd/raw",
+        ),
+    ]
+
+    INVALID_URLS = [
+        "blah",
+        "google.com",
+        "http://homestarrunner.com",
+        "https://somethinglikegithub.com/withablob",
+        "gist.github.com/nothing",
+        "https://raw.githubusercontent.com/streamlit/streamlit/develop/examples/video.py",
+        "streamlit.io/raw/blob",
+    ]
+
+    def test_github_url_is_replaced(self):
+        for (target, processed) in self.GITHUB_URLS:
+            assert util.process_gitblob_url(target) == processed
+
+    def test_gist_url_is_replaced(self):
+        for (target, processed) in self.GIST_URLS:
+            assert util.process_gitblob_url(target) == processed
+
+    def test_nonmatching_url_is_not_replaced(self):
+        for url in self.INVALID_URLS:
+            assert url == util.process_gitblob_url(url)

@@ -17,6 +17,7 @@
 
 from streamlit import config
 from streamlit import util
+from streamlit import type_util
 from streamlit.ForwardMsgCache import populate_hash_if_needed
 
 # Largest message that can be sent via the WebSocket connection.
@@ -125,7 +126,7 @@ def is_url_from_allowed_origins(url):
     ]
 
     for allowed_domain in allowed_domains:
-        if util.is_function(allowed_domain):
+        if type_util.is_function(allowed_domain):
             allowed_domain = allowed_domain()
 
         if allowed_domain is None:
@@ -145,3 +146,10 @@ def _get_server_address_if_manually_set():
 def _get_s3_url_host_if_manually_set():
     if config.is_manually_set("s3.url"):
         return util.get_hostname(config.get_option("s3.url"))
+
+
+def make_url_path_regex(*path, **kwargs):
+    """Get a regex of the form ^/foo/bar/baz/?$ for a path (foo, bar, baz)."""
+    path = [x.strip("/") for x in path if x]  # Filter out falsy components.
+    path_format = r"^/%s/?$" if kwargs.get("trailing_slash", True) else r"^/%s$"
+    return path_format % "/".join(path)

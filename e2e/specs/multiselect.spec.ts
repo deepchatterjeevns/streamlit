@@ -20,6 +20,9 @@
 describe("st.multiselect", () => {
   beforeEach(() => {
     cy.visit("http://localhost:3000/");
+
+    // Make the ribbon decoration line disappear
+    cy.get(".decoration").invoke("css", "display", "none");
   });
 
   describe("when first loaded", () => {
@@ -27,16 +30,16 @@ describe("st.multiselect", () => {
       cy.get(".stMultiSelect").should("have.length", 4);
 
       cy.get(".stMultiSelect").each((el, idx) => {
-        cy.wrap(el).matchImageSnapshot("multiselect" + idx);
+        return cy.wrap(el).matchImageSnapshot("multiselect" + idx);
       });
     });
 
     it("should show the correct text", () => {
       cy.get(".stText")
-        .should("have.length", 8)
+        .should("have.length", 4)
         .should(
           "have.text",
-          'value 1:[]value 2:[]value 3:[]value 4:[0:"tea"1:"water"]'
+          "value 1: []value 2: []value 3: []value 4: ['tea', 'water']"
         );
     });
 
@@ -61,14 +64,17 @@ describe("st.multiselect", () => {
       cy.get(".stMultiSelect")
         .eq(0)
         .then(el => {
-          cy.wrap(el)
+          return cy
+            .wrap(el)
             .find("input")
             .click()
             .get("li")
             .should("have.length", 2)
             .should("have.text", "malefemale")
             .each((el, idx) => {
-              cy.wrap(el).matchImageSnapshot("multiselect-dropdown-" + idx);
+              return cy
+                .wrap(el)
+                .matchImageSnapshot("multiselect-dropdown-" + idx);
             });
         });
     });
@@ -85,7 +91,7 @@ describe("st.multiselect", () => {
       .click();
   }
 
-  describe("when the user make a selection", () => {
+  describe("when the user makes a selection", () => {
     beforeEach(() => selectOption(1));
 
     it("sets the value correctly", () => {
@@ -101,10 +107,10 @@ describe("st.multiselect", () => {
 
     it("outputs the correct value", () => {
       cy.get(".stText")
-        .should("have.length", 8)
+        .should("have.length", 4)
         .should(
           "have.text",
-          'value 1:[]value 2:[0:"female"]value 3:[]value 4:[0:"tea"1:"water"]'
+          "value 1: []value 2: ['female']value 3: []value 4: ['tea', 'water']"
         );
     });
 
@@ -113,10 +119,10 @@ describe("st.multiselect", () => {
 
       it("outputs the correct value", () => {
         cy.get(".stText")
-          .should("have.length", 8)
+          .should("have.length", 4)
           .should(
             "have.text",
-            'value 1:[]value 2:[0:"female"1:"male"]value 3:[]value 4:[0:"tea"1:"water"]'
+            "value 1: []value 2: ['female', 'male']value 3: []value 4: ['tea', 'water']"
           );
       });
 
@@ -128,10 +134,10 @@ describe("st.multiselect", () => {
         });
         it("outputs the correct value", () => {
           cy.get(".stText")
-            .should("have.length", 8)
+            .should("have.length", 4)
             .should(
               "have.text",
-              'value 1:[]value 2:[0:"male"]value 3:[]value 4:[0:"tea"1:"water"]'
+              "value 1: []value 2: ['male']value 3: []value 4: ['tea', 'water']"
             );
         });
       });
@@ -144,10 +150,10 @@ describe("st.multiselect", () => {
         });
         it("outputs the correct value", () => {
           cy.get(".stText")
-            .should("have.length", 8)
+            .should("have.length", 4)
             .should(
               "have.text",
-              'value 1:[]value 2:[]value 3:[]value 4:[0:"tea"1:"water"]'
+              "value 1: []value 2: []value 3: []value 4: ['tea', 'water']"
             );
         });
       });

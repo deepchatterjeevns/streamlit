@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-interface Args {
+export interface Args {
   streamlitVersion: string
   pythonVersion: string
   installationId: string
@@ -57,7 +57,7 @@ export class SessionInfo {
     return SessionInfo.singleton != null
   }
 
-  public constructor({
+  constructor({
     streamlitVersion,
     pythonVersion,
     installationId,

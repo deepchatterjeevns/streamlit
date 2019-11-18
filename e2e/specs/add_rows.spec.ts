@@ -30,12 +30,15 @@ describe("st.add_rows", () => {
 
     // Wait for 'stale-element' class to go away, so the snapshot looks right.
     cy.get(".element-container").should("not.have.class", "stale-element");
+
+    // Make the ribbon decoration line disappear
+    cy.get(".decoration").invoke("css", "display", "none");
   });
 
   it("works for all elements that support it", () => {
     cy.get(".element-container .stTable").should("have.length", 3);
     cy.get(".element-container .stDataFrame").should("have.length", 4);
-    cy.get(".element-container .stVegaLiteChart").should("have.length", 16);
+    cy.get(".element-container .stVegaLiteChart").should("have.length", 18);
   });
 
   it("raises an exception when the shapes don't match", () => {
@@ -54,7 +57,7 @@ describe("st.add_rows", () => {
 
   it("correctly adds rows to charts", () => {
     cy.get(".element-container .stVegaLiteChart").each((el, i) => {
-      cy.get(el).matchImageSnapshot(`stVegaLiteChart-${i}`);
+      return cy.get(el).matchImageSnapshot(`stVegaLiteChart-${i}`);
     });
   });
 });

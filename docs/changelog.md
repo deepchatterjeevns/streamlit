@@ -19,9 +19,85 @@ See highlights, bug fixes, and known issues for Streamlit releases:
 
    .. code-block:: bash
 
-      # PIP
       $ pip install --upgrade streamlit
 ```
+
+## Version 0.50.1
+
+_Release date: November 10, 2019_
+
+**Highlights:**
+
+- 👩‍🎓 SymPy support and ability to draw mathematical expressions using LaTeX! See
+  [`st.latex`](api.html#streamlit.latex),
+  [`st.markdown`](api.html#streamlit.markdown),
+  and
+  [`st.write`](api.html#streamlit.write).
+- 🌄 You can now set config options using environment variables. For example,
+  `export STREAMLIT_SERVER_PORT=9876`.
+- 🐱 Ability to call `streamlit run` directly with Github and Gist URLs. No
+  need to grab the "raw" URL first!
+- 📃 Cleaner exception stack traces. We now remove all Streamlit-specific code
+  from stack traces originating from the user's app.
+
+## Version 0.49.0
+
+_Release date: October 23, 2019_
+
+**Highlights:**
+
+- 💯 New input widget for entering numbers with the keyboard: `st.number_input()`
+- 📺 Audio/video improvements: ability to load from a URL, to embed YouTube
+  videos, and to set the start position.
+- 🤝 You can now (once again) share static snapshots of your apps to S3! See
+  the S3 section of `streamlit config show` to set it up. Then share from
+  top-right menu.
+- ⚙️ Use `server.baseUrlPath` config option to set Streamlit's URL to something
+  like `http://domain.com/customPath`.
+
+**Notable bug fixes:**
+
+- Fixes numerous Windows bugs, including [Issues
+  #339](https://github.com/streamlit/streamlit/issues/399) and
+  [#401](https://github.com/streamlit/streamlit/issues/301).
+
+## Version 0.48.0
+
+_Release date: October 12, 2019_
+
+**Highlights:**
+
+- 🔧 Ability to set config options as command line flags or in a local config file.
+- ↕️ You can now maximize charts and images!
+- ⚡ Streamlit is now much faster when writing data in quick succession to your app.
+- ✳️ Ability to blacklist folder globs from "run on save" and `@st.cache` hashing.
+- 🎛️ Improved handling of widget state when Python file is modified.
+- 🙈 Improved HTML support in `st.write` and `st.markdown`. HTML is still unsafe, though!
+
+**Notable bug fixes:**
+
+- Fixes `@st.cache` bug related to having your Python environment on current
+  working directory. [Issue #242](https://github.com/streamlit/streamlit/issues/242)
+- Fixes loading of root url `/` on Windows. [Issue #244](https://github.com/streamlit/streamlit/issues/244)
+
+## Version 0.47.0
+
+_Release date: October 1, 2019_
+
+**Highlights:**
+
+- 🌄 New hello.py showing off 4 glorious Streamlit apps. Try it out!
+- 🔄 Streamlit now automatically selects an unused port when 8501 is already in use.
+- 🎁 Sidebar support is now out of beta! Just start any command with `st.sidebar.` instead of `st.`
+- ⚡ Performance improvements: we added a cache to our websocket layer so we no longer re-send data to the browser when it hasn't changed between runs
+- 📈 Our "native" charts `st.line_chart`, `st.area_chart` and `st.bar_chart` now use Altair behind the scenes
+- 🔫 Improved widgets: custom st.slider labels; default values in multiselect
+- 🕵️‍♀️ The filesystem watcher now ignores hidden folders and virtual environments
+- 💅 Plus lots of polish around caching and widget state management
+
+**Breaking change:**
+
+- 🛡️ We have temporarily disabled support for sharing static "snapshots" of Streamlit apps. Now that we're no longer in a limited-access beta, we need to make sure sharing is well thought through and abides by laws like the DMCA. But we're working on a solution!
 
 ## Version 0.46.0
 

@@ -70,7 +70,7 @@ def _fix_matplotlib_crash():
     This fix is OS-independent. We didn't see a good reason to make this
     Mac-only. Consistency within Streamlit seemed more important.
     """
-    if sys.platform == "darwin" and config.get_option("runner.fixMatplotlib"):
+    if config.get_option("runner.fixMatplotlib"):
         try:
             # TODO: a better option may be to set
             #  os.environ["MPLBACKEND"] = "Agg". We'd need to do this towards
@@ -178,8 +178,11 @@ def run(script_path, command_line, args):
 
     # Create and start the server.
     server = Server(ioloop, script_path, command_line)
-    server.add_preheated_report_session()
     server.start(_on_server_start)
+
+    # (Must com after start(), because this starts a new thread and start() may
+    # call sys.exit() which doesn't kill other threads.
+    server.add_preheated_report_session()
 
     # Start the ioloop. This function will not return until the
     # server is shut down.

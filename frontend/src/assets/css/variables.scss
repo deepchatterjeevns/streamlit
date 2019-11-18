@@ -20,10 +20,10 @@ $white: #ffffff;
 $gray-050: #fafafa;
 $gray-100: #fafafa;
 $gray-200: #f0f2f6;
-$gray-300: #e6eaf1; // 2 We don't need a million grays!
-$gray-400: #d5dae5; // 2
+$gray-300: #e6eaf1;
+$gray-400: #d5dae5;
 $gray-500: #bfc5d3;
-$gray-600: #a3a8b4; // 500
+$gray-600: #a3a8b4;
 $gray-700: #808495;
 $gray-800: #555867;
 $gray-900: #262730;
@@ -51,6 +51,7 @@ $light: $gray-100;
 $dark: $gray;
 
 $primary-a50: change-color($primary, $alpha: 0.5);
+$white-a50: #ffffff88;
 
 // Overwrite some theme fonts settings.
 $font-family-sans-serif: "IBM Plex Sans", sans-serif;
@@ -71,7 +72,9 @@ $btn-border-radius: $border-radius-large;
 
 // Custom z-index values (not related to bootstrap)
 $z-index-popup-menu: 140;
+$z-index-sidebar-mobile: 130;
 $z-index-header: 120;
+$z-index-menu-button: 110;
 $z-index-sidebar: 100;
 
 // Custom values for our own use.
@@ -80,10 +83,21 @@ $m2-3-font-size-sm: $font-size-sm * 2 / 3; // m2-3 = multiply by 2/3
 $m1-2-font-size-base: $font-size-base / 2; // m1-2 = multiply by 1/2
 
 // Layout sizing
-$top-margin: 5rem;
-$bottom-margin: $top-margin * 2;
 $sidebar-width: 21rem;
 $content-max-width: 730px; // This number comes from bootstrap.
+$header-height: 3.5rem;
+$top-margin: 5rem;
+$bottom-margin: $top-margin * 2;
+
+// Custom values for full screen use.
+$fullscreen-button: 2rem;
+$fullscreen-padding: 0.75rem;
+$fullscreen-padding-top: $header-height;
+
+$overlayBtn-height: 2.5rem;
+$overlayBtn-width: 2.5rem;
+$overlayBtn-opacity-visible: 0.25;
+$overlayBtn-opacity-active: 0.75;
 
 // Animation settings
 $normal-animation-duration: 300ms;

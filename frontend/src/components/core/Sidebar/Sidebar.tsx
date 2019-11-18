@@ -17,7 +17,7 @@
 
 import React, { PureComponent, ReactElement } from "react"
 import classNames from "classnames"
-import Icon from "components/core/Icon"
+import Icon from "components/shared/Icon"
 import { Button } from "reactstrap"
 
 import "./Sidebar.scss"
@@ -33,12 +33,14 @@ interface State {
 
 // Bootstrap medium breakpoint. See
 // https://getbootstrap.com/docs/4.3/layout/overview/.
-const MEDIUM_BREAKPOINT_PX = 767.98
+const MEDIUM_BREAKPOINT_PX = 991.98
 
 class Sidebar extends PureComponent<Props, State> {
   public static defaultProps: Partial<Props> = {
     onChange: () => {},
   }
+
+  private sidebarRef = React.createRef<HTMLDivElement>()
 
   constructor(props: Props) {
     super(props)
@@ -52,21 +54,40 @@ class Sidebar extends PureComponent<Props, State> {
     }
   }
 
-  componentDidMount() {
+  componentDidMount(): void {
     window.addEventListener("resize", this.checkMobileOnResize)
+    document.addEventListener("mousedown", this.handleClickOutside)
   }
 
-  componentWillUnmount() {
+  componentWillUnmount(): void {
     window.removeEventListener("resize", this.checkMobileOnResize)
+    document.removeEventListener("mousedown", this.handleClickOutside)
   }
 
-  checkMobileOnResize = () => {
+  handleClickOutside = (event: any): void => {
+    if (this.sidebarRef && window) {
+      const { current } = this.sidebarRef
+      const { innerWidth } = window
+
+      if (
+        current &&
+        !current.contains(event.target) &&
+        innerWidth <= MEDIUM_BREAKPOINT_PX
+      ) {
+        this.setState({ collapsedSidebar: true })
+      }
+    }
+  }
+
+  checkMobileOnResize = (): boolean => {
     if (!window) return false
 
     const { innerWidth } = window
 
     if (innerWidth <= MEDIUM_BREAKPOINT_PX)
       this.setState({ collapsedSidebar: true })
+
+    return true
   }
 
   toggleCollapse = (): void => {
@@ -88,8 +109,9 @@ class Sidebar extends PureComponent<Props, State> {
       "--collapsed": collapsedSidebar,
     })
 
+    // The tabindex is required to support scrolling by arrow keys.
     return (
-      <section className={sectionClassName}>
+      <section className={sectionClassName} ref={this.sidebarRef}>
         <div className="sidebar-content">
           <Button
             outline

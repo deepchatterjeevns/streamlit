@@ -20,6 +20,7 @@ import pandas as pd
 from parameterized import parameterized
 
 import streamlit as st
+from streamlit.errors import StreamlitAPIException
 from tests import testutil
 
 
@@ -85,10 +86,9 @@ class Multiselectbox(testutil.DeltaGeneratorTestCase):
         self.assertListEqual(c.default[:], [])
         self.assertEqual(c.options, [])
 
-    @parameterized.expand([(None, []), ([], []),
-                           (["Tea", "Water"], [1, 2]),
-                           (("Tea", "Water"), [1, 2]),
-                           ])
+    @parameterized.expand(
+        [(None, []), ([], []), (["Tea", "Water"], [1, 2]), (("Tea", "Water"), [1, 2])]
+    )
     def test_defaults(self, defaults, expected):
         """Test that valid default can be passed as expected."""
         st.multiselect("the label", ["Coffee", "Tea", "Water"], defaults)
@@ -98,7 +98,9 @@ class Multiselectbox(testutil.DeltaGeneratorTestCase):
         self.assertListEqual(c.default[:], expected)
         self.assertEqual(c.options, ["Coffee", "Tea", "Water"])
 
-    @parameterized.expand([(["Tea", "Vodka"], ValueError), ([1, 2], TypeError)])
+    @parameterized.expand(
+        [(["Tea", "Vodka"], StreamlitAPIException), ([1, 2], StreamlitAPIException)]
+    )
     def test_invalid_defaults(self, defaults, expected):
         """Test that invalid default trigger the expected exception."""
         with self.assertRaises(expected):

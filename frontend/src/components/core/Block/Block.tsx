@@ -16,7 +16,6 @@
  */
 
 import React, { PureComponent, ReactNode, Suspense } from "react"
-import { Progress } from "reactstrap"
 import { AutoSizer } from "react-virtualized"
 import { List, Map as ImmutableMap } from "immutable"
 import { dispatchOneOf } from "lib/immutableProto"
@@ -26,10 +25,14 @@ import { makeElementWithInfoText } from "lib/utils"
 import { ForwardMsgMetadata } from "autogen/proto"
 
 // Load (non-lazy) elements.
+import Alert from "components/elements/Alert/"
 import Chart from "components/elements/Chart/"
 import DocString from "components/elements/DocString/"
 import ErrorBoundary from "components/shared/ErrorBoundary/"
+import FullScreenWrapper from "components/shared/FullScreenWrapper/"
 import ExceptionElement from "components/elements/ExceptionElement/"
+import Json from "components/elements/Json/"
+import Markdown from "components/elements/Markdown/"
 import Table from "components/elements/Table/"
 import Text from "components/elements/Text/"
 
@@ -58,12 +61,14 @@ const Button = React.lazy(() => import("components/widgets/Button/"))
 const Checkbox = React.lazy(() => import("components/widgets/Checkbox/"))
 const DateInput = React.lazy(() => import("components/widgets/DateInput/"))
 const Multiselect = React.lazy(() => import("components/widgets/Multiselect/"))
+const Progress = React.lazy(() => import("components/elements/Progress/"))
 const Radio = React.lazy(() => import("components/widgets/Radio/"))
 const Selectbox = React.lazy(() => import("components/widgets/Selectbox/"))
 const Slider = React.lazy(() => import("components/widgets/Slider/"))
 const TextArea = React.lazy(() => import("components/widgets/TextArea/"))
 const TextInput = React.lazy(() => import("components/widgets/TextInput/"))
 const TimeInput = React.lazy(() => import("components/widgets/TimeInput/"))
+const NumberInput = React.lazy(() => import("components/widgets/NumberInput/"))
 
 type SimpleElement = ImmutableMap<string, any>
 type StElement = SimpleElement | BlockElement
@@ -165,9 +170,10 @@ class Block extends PureComponent<Props> {
       this.props.showStaleElementIndicator &&
       this.isElementStale(element as SimpleElement)
 
-    const className = isStale
-      ? "element-container stale-element"
-      : "element-container"
+    const className =
+      isStale && !FullScreenWrapper.isFullScreen
+        ? "element-container stale-element"
+        : "element-container"
 
     return (
       <div key={index} className={className} style={{ width }}>
@@ -202,17 +208,20 @@ class Block extends PureComponent<Props> {
     }
 
     const metadata = element.get("metadata") as ForwardMsgMetadata
+    let height: number | undefined
 
     // Modify width using the value from the spec as passed with the message when applicable
-    if (
-      metadata &&
-      metadata.elementDimensionSpec &&
-      metadata.elementDimensionSpec.width > 0
-    ) {
-      width = Math.min(metadata.elementDimensionSpec.width, width)
+    if (metadata && metadata.elementDimensionSpec) {
+      if (metadata.elementDimensionSpec.width > 0) {
+        width = Math.min(metadata.elementDimensionSpec.width, width)
+      }
+      if (metadata.elementDimensionSpec.height > 0) {
+        height = metadata.elementDimensionSpec.height
+      }
     }
 
     return dispatchOneOf(element, "type", {
+      alert: (el: SimpleElement) => <Alert element={el} width={width} />,
       audio: (el: SimpleElement) => <Audio element={el} width={width} />,
       balloons: (el: SimpleElement) => <Balloons element={el} width={width} />,
       bokehChart: (el: SimpleElement) => (
@@ -220,11 +229,7 @@ class Block extends PureComponent<Props> {
       ),
       chart: (el: SimpleElement) => <Chart element={el} width={width} />,
       dataFrame: (el: SimpleElement) => (
-        <DataFrame
-          element={el}
-          width={width}
-          elementDimensionSpec={metadata.elementDimensionSpec}
-        />
+        <DataFrame element={el} width={width} height={height} />
       ),
       deckGlChart: (el: SimpleElement) => (
         <DeckGlChart element={el} width={width} />
@@ -240,6 +245,8 @@ class Block extends PureComponent<Props> {
         <GraphVizChart element={el} index={index} width={width} />
       ),
       imgs: (el: SimpleElement) => <ImageList element={el} width={width} />,
+      json: (el: SimpleElement) => <Json element={el} width={width} />,
+      markdown: (el: SimpleElement) => <Markdown element={el} width={width} />,
       multiselect: (el: SimpleElement) => (
         <Multiselect
           key={el.get("id")}
@@ -251,13 +258,7 @@ class Block extends PureComponent<Props> {
       plotlyChart: (el: SimpleElement) => (
         <PlotlyChart element={el} width={width} />
       ),
-      progress: (el: SimpleElement) => (
-        <Progress
-          value={el.get("value")}
-          className="stProgress"
-          style={{ width }}
-        />
-      ),
+      progress: (el: SimpleElement) => <Progress element={el} width={width} />,
       table: (el: SimpleElement) => <Table element={el} width={width} />,
       text: (el: SimpleElement) => <Text element={el} width={width} />,
       vegaLiteChart: (el: SimpleElement) => (
@@ -332,10 +333,18 @@ class Block extends PureComponent<Props> {
           {...widgetProps}
         />
       ),
+      numberInput: (el: SimpleElement) => (
+        <NumberInput
+          key={el.get("id")}
+          element={el}
+          width={width}
+          {...widgetProps}
+        />
+      ),
     })
   }
 
-  public render = () => (
+  public render = (): ReactNode => (
     <AutoSizer disableHeight={true}>
       {({ width }) => this.renderElements(width)}
     </AutoSizer>

@@ -20,18 +20,21 @@
 describe("st.selectbox", () => {
   beforeEach(() => {
     cy.visit("http://localhost:3000/");
+
+    // Make the ribbon decoration line disappear
+    cy.get(".decoration").invoke("css", "display", "none");
   });
 
   it("shows widget correctly", () => {
     cy.get(".stSelectbox").should("have.length", 3);
 
     cy.get(".stSelectbox").each((el, idx) => {
-      cy.wrap(el).matchImageSnapshot("selectbox" + idx);
+      return cy.wrap(el).matchImageSnapshot("selectbox" + idx);
     });
   });
 
   it("has correct initial values", () => {
-    cy.get(".stText").should(
+    cy.get(".stMarkdown").should(
       "have.text",
       "value 1: female" + "value 2: male" + "value 3: None"
     );
@@ -66,7 +69,7 @@ describe("st.selectbox", () => {
           .click();
       });
 
-    cy.get(".stText").should(
+    cy.get(".stMarkdown").should(
       "have.text",
       "value 1: female" + "value 2: female" + "value 3: None"
     );

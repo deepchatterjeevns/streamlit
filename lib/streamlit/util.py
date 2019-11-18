@@ -34,13 +34,15 @@ import sys
 import urllib
 
 import click
+import fnmatch
 import requests
 
 from streamlit.logger import get_logger
 
 LOGGER = get_logger(__name__)
 
-STREAMLIT_ROOT_DIRECTORY = ".streamlit"
+# Configuration and credentials are stored inside the ~/.streamlit folder
+CONFIG_FOLDER_NAME = ".streamlit"
 
 # Magic strings used to mark exceptions that have been handled by Streamlit's
 # excepthook. These string should be printed to stderr.
@@ -51,6 +53,14 @@ _AWS_CHECK_IP = "http://checkip.amazonaws.com"
 
 # URL of Streamlit's help page.
 HELP_DOC = "https://streamlit.io/docs/"
+
+# Regular expression for process_gitblob_url
+GITBLOB_RE = re.compile(
+    "(?P<base>https:\/\/?(gist.)?github.com\/)"
+    "(?P<account>([\w\.]+\/){1,2})"
+    "(?P<blob_or_raw>(blob|raw))?"
+    "(?P<suffix>(.+)?)"
+)
 
 
 def _decode_ascii(string):
@@ -71,7 +81,7 @@ def streamlit_read(path, binary=False):
 
     path   - the path to write to (within the streamlit directory)
     binary - set to True for binary IO
-    """ % STREAMLIT_ROOT_DIRECTORY
+    """ % CONFIG_FOLDER_NAME
     filename = get_streamlit_file_path(path)
     if os.stat(filename).st_size == 0:
         raise Error('Read zero byte file: "%s"' % filename)
@@ -79,7 +89,7 @@ def streamlit_read(path, binary=False):
     mode = "r"
     if binary:
         mode += "b"
-    with open(os.path.join(STREAMLIT_ROOT_DIRECTORY, path), mode) as handle:
+    with open(os.path.join(CONFIG_FOLDER_NAME, path), mode) as handle:
         yield handle
 
 
@@ -97,11 +107,17 @@ def streamlit_write(path, binary=False):
 
     path   - the path to write to (within the streamlit directory)
     binary - set to True for binary IO
-    """ % STREAMLIT_ROOT_DIRECTORY
+    """ % CONFIG_FOLDER_NAME
     mode = "w"
     if binary:
         mode += "b"
     path = get_streamlit_file_path(path)
+    try:
+        os.makedirs(os.path.dirname(path))
+    except Exception:
+        # Python 3 supports exist_ok=True which avoids the try/except,
+        # but Python 2 does not.
+        pass
     try:
         with open(path, mode) as handle:
             yield handle
@@ -242,61 +258,31 @@ def open_browser(url):
 
     system = platform.system()
 
-    if system == "Linux":
-        cmd = ["xdg-open", url]
-    elif system == "Darwin":
-        cmd = ["open", url]
-    elif system == "Windows":
-        # Windows has a few bugs.
-        # * os.devnull doesnt exist so the open command below fails
-        # * subprocess doesnt actually pop up the browser even though
-        #   'start url' works from the command prompt
-        # * tornado for whatever reason doesnt map / to /index.html and
-        #   you get a 404.
-        data = urllib.parse.urlsplit(url)
-        (scheme, netloc, path, query, fragment) = data
-        if re.match(r"^/$", path):
-            path = "/index.html"
-        url = urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
+    if system == "Windows":
+        # Treat Windows separately because:
+        # 1. /dev/null doesn't exist.
+        # 2. subprocess.Popen(['start', url]) doesn't actually pop up the
+        #    browser even though 'start url' works from the command prompt.
+        # Fun!
         import webbrowser
 
         webbrowser.open(url)
         return
+
+    # We don't use the webbrowser module on Linux and Mac because some browsers
+    # (ahem... Chrome) always print "Opening in existing browser session" to
+    # the terminal, which is spammy and annoying. So instead we start the
+    # browser ourselves and send all its output to /dev/null.
+
+    if system == "Linux":
+        cmd = ["xdg-open", url]
+    elif system == "Darwin":
+        cmd = ["open", url]
     else:
         raise Error('Cannot open browser in platform "%s"' % system)
 
     with open(os.devnull, "w") as devnull:
         subprocess.Popen(cmd, stdout=devnull, stderr=subprocess.STDOUT)
-
-
-def is_type(obj, fqn_type_pattern):
-    """Check type without importing expensive modules.
-
-    Parameters
-    ----------
-    obj : any
-        The object to type-check.
-    fqn_type_pattern : str or regex
-        The fully-qualified type string or a regular expression.
-        Regexes should start with `^` and end with `$`.
-
-    Example
-    -------
-
-    To check whether something is a Matplotlib Figure without importing
-    matplotlib, use:
-
-    >>> is_type(foo, 'matplotlib.figure.Figure')
-
-    """
-    the_type = type(obj)
-    module = the_type.__module__
-    name = the_type.__name__
-    actual_fqn = "%s.%s" % (module, name)
-    if isinstance(fqn_type_pattern, string_types):
-        return fqn_type_pattern == actual_fqn
-    else:
-        return fqn_type_pattern.match(actual_fqn) is not None
 
 
 class Error(Exception):
@@ -311,68 +297,6 @@ def is_pex():
     """
     if re.match(r".*pex$", sys.path[0]):
         return True
-    return False
-
-
-def is_altair_chart(obj):
-    """True if input looks like an Altair chart."""
-    return is_type(obj, re.compile(r"^altair\.vegalite\.v\d+\.api\.\w*Chart$"))
-
-
-def is_keras_model(obj):
-    """True if input looks like a Keras model."""
-    return (
-        is_type(obj, "keras.engine.sequential.Sequential")
-        or is_type(obj, "keras.engine.training.Model")
-        or is_type(obj, "tensorflow.python.keras.engine.sequential.Sequential")
-        or is_type(obj, "tensorflow.python.keras.engine.training.Model")
-    )
-
-
-def is_plotly_chart(obj):
-    """True if input looks like a Plotly chart."""
-    return (
-        is_type(obj, "plotly.graph_objs._figure.Figure")
-        or _is_list_of_plotly_objs(obj)
-        or _is_probably_plotly_dict(obj)
-    )
-
-
-def is_graphviz_chart(obj):
-    """True if input looks like a GraphViz chart."""
-    return is_type(obj, "graphviz.dot.Graph") or is_type(obj, "graphviz.dot.Digraph")
-
-
-def _is_plotly_obj(obj):
-    """True if input if from a type that lives in plotly.plotly_objs."""
-    the_type = type(obj)
-    return the_type.__module__.startswith("plotly.graph_objs")
-
-
-def _is_list_of_plotly_objs(obj):
-    if type(obj) is not list:
-        return False
-    if len(obj) == 0:
-        return False
-    return all(_is_plotly_obj(item) for item in obj)
-
-
-def _is_probably_plotly_dict(obj):
-    if type(obj) not in dict_types:
-        return False
-
-    if len(obj.keys()) == 0:
-        return False
-
-    if any(k not in ["config", "data", "frames", "layout"] for k in obj.keys()):
-        return False
-
-    if any(_is_plotly_obj(v) for v in obj.values()):
-        return True
-
-    if any(_is_list_of_plotly_objs(v) for v in obj.values()):
-        return True
-
     return False
 
 
@@ -394,37 +318,56 @@ def is_repl():
     return False
 
 
-_function_type = type(lambda: 0)
-
-
-def is_function(x):
-    """Return True if x is a function."""
-    return type(x) == _function_type
-
-
 def get_streamlit_file_path(*filepath):
-    """Return the full path to a filepath in ~/.streamlit.
+    """Return the full path to a file in ~/.streamlit.
 
-    Creates ~/.streamlit if needed.
+    This doesn't guarantee that the file (or its directory) exists.
     """
     # os.path.expanduser works on OSX, Linux and Windows
     home = os.path.expanduser("~")
     if home is None:
         raise RuntimeError("No home directory.")
 
-    folder_path = filepath[:-1]
-    st_path = os.path.join(home, STREAMLIT_ROOT_DIRECTORY, *folder_path)
+    return os.path.join(home, CONFIG_FOLDER_NAME, *filepath)
 
-    if not os.path.isdir(st_path):
-        os.makedirs(st_path)
 
-    return os.path.join(home, STREAMLIT_ROOT_DIRECTORY, *filepath)
+def get_project_streamlit_file_path(*filepath):
+    """Return the full path to a filepath in ${CWD}/.streamlit.
+
+    This doesn't guarantee that the file (or its directory) exists.
+    """
+    return os.path.join(os.getcwd(), CONFIG_FOLDER_NAME, *filepath)
 
 
 def print_url(title, url):
     """Pretty-print a URL on the terminal."""
     click.secho("  %s: " % title, nl=False, fg="blue")
     click.secho(url, bold=True)
+
+
+def process_gitblob_url(url):
+    """Check url to see if it describes a GitHub Gist "blob" URL.
+
+    If so, returns a new URL to get the "raw" script.
+    If not, returns URL unchanged.
+    """
+    # Matches github.com and gist.github.com.  Will not match githubusercontent.com.
+    # See this regex with explainer and sample text here: https://regexr.com/4odk3
+    match = GITBLOB_RE.match(url)
+    if match:
+        mdict = match.groupdict()
+        # If it has "blob" in the url, replace this with "raw" and we're done.
+        if mdict["blob_or_raw"] == "blob":
+            return "{base}{account}raw{suffix}".format(**mdict)
+
+        # If it is a "raw" url already, return untouched.
+        if mdict["blob_or_raw"] == "raw":
+            return url
+
+        # It's a gist. Just tack "raw" on the end.
+        return url + "/raw"
+
+    return url
 
 
 def get_hostname(url):
@@ -438,16 +381,28 @@ def get_hostname(url):
     return parsed.hostname
 
 
-def is_namedtuple(x):
-    t = type(x)
-    b = t.__bases__
-    if len(b) != 1 or b[0] != tuple:
-        return False
-    f = getattr(t, "_fields", None)
-    if not isinstance(f, tuple):
-        return False
-    return all(type(n).__name__ == "str" for n in f)
-
-
 def is_darwin():
     return platform.system() == "Darwin"
+
+
+def file_is_in_folder_glob(filepath, folderpath_glob):
+    """Test whether a file is in some folder with globbing support.
+
+    Parameters
+    ----------
+    filepath : str
+        A file path.
+    folderpath_glob: str
+        A path to a folder that may include globbing.
+
+    """
+    # Make the glob always end with "/*" so we match files inside subfolders of
+    # folderpath_glob.
+    if not folderpath_glob.endswith("*"):
+        if folderpath_glob.endswith("/"):
+            folderpath_glob += "*"
+        else:
+            folderpath_glob += "/*"
+
+    file_dir = os.path.dirname(filepath) + "/"
+    return fnmatch.fnmatch(file_dir, folderpath_glob)

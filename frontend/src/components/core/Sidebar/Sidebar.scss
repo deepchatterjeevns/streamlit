@@ -1,6 +1,31 @@
+/**
+ * Copyright 2018-2019 Streamlit Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 @import "src/assets/css/theme";
 
 .sidebar {
+  @include media-breakpoint-down(md) {
+    margin-left: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
   &.--collapsed {
     .sidebar-content {
       margin-left: -$sidebar-width;
@@ -30,10 +55,13 @@
     width: $sidebar-width;
     z-index: $z-index-sidebar;
 
+    &:focus {
+      outline: none;
+    }
+
     @include media-breakpoint-down(md) {
       box-shadow: 0 0 2rem #a3a8b488;
-      background-color: $gray-100;
-      background-image: none;
+      z-index: $z-index-sidebar-mobile;
     }
 
     .sidebar-close {
@@ -42,7 +70,7 @@
       right: 0.5rem;
       z-index: 1;
 
-      svg {
+      .open-iconic {
         fill: $black;
         opacity: 0.25;
       }
@@ -50,7 +78,7 @@
       &:hover {
         background: transparent;
 
-        svg {
+        .open-iconic {
           opacity: 1;
         }
       }
@@ -82,6 +110,14 @@
       font-weight: 300;
       text-transform: uppercase;
     }
+
+    .progress {
+      background-color: $gray-light;
+    }
+
+    .progress-bar {
+      background-color: $blue;
+    }
   }
 
   .sidebar-collapse-control {
@@ -93,7 +129,7 @@
     transition: left $normal-animation-duration;
     transition-delay: $normal-animation-duration;
 
-    svg {
+    .open-iconic {
       fill: $black;
       opacity: 0.25;
 
@@ -107,7 +143,7 @@
       background-color: $gray-lightest;
       border-color: #1d2124;
 
-      svg {
+      .open-iconic {
         opacity: 1;
       }
     }

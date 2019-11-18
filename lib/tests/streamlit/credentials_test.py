@@ -14,10 +14,11 @@
 # limitations under the License.
 
 """streamlit.credentials unit test."""
-
+import os
 import sys
 import textwrap
 import unittest
+from parameterized import parameterized
 
 import pytest
 from mock import MagicMock
@@ -25,6 +26,8 @@ from mock import call
 from mock import mock_open
 from mock import patch
 
+from streamlit import util
+from streamlit import config
 from streamlit.credentials import Activation
 from streamlit.credentials import Credentials
 from streamlit.credentials import _verify_email
@@ -152,7 +155,7 @@ class CredentialsClassTest(unittest.TestCase):
         c = Credentials.get_current()
         c.activation = Activation("some_email", True)
         with patch("streamlit.credentials._exit") as p:
-            c.check_activated()
+            c._check_activated(auto_resolve=False)
             p.assert_not_called()
 
     @patch("streamlit.credentials.util.get_streamlit_file_path", mock_get_path)
@@ -161,7 +164,7 @@ class CredentialsClassTest(unittest.TestCase):
         c = Credentials.get_current()
         c.activation = Activation("some_email", False)
         with patch("streamlit.credentials._exit") as p:
-            c.check_activated()
+            c._check_activated(auto_resolve=False)
             p.assert_called_once_with("Activation email not valid.")
 
     @patch("streamlit.credentials.util.get_streamlit_file_path", mock_get_path)
@@ -172,7 +175,7 @@ class CredentialsClassTest(unittest.TestCase):
         with patch.object(c, "load", side_effect=Exception("Some error")), patch(
             "streamlit.credentials._exit"
         ) as p:
-            c.check_activated()
+            c._check_activated(auto_resolve=False)
             p.assert_called_once_with("Some error")
 
     @patch("streamlit.credentials.util.get_streamlit_file_path", mock_get_path)
@@ -187,20 +190,16 @@ class CredentialsClassTest(unittest.TestCase):
         """
         ).lstrip()
 
-        truth2 = textwrap.dedent(
-            """
-            [general]
-            email = "some_email"
-        """
-        ).lstrip()
+        streamlit_root_path = os.path.join("/mock/home/folder", util.CONFIG_FOLDER_NAME)
 
-        m = mock_open()
-        with patch("streamlit.credentials.open", m, create=True) as m:
+        with patch(
+            "streamlit.credentials.open", mock_open(), create=True
+        ) as open, patch("streamlit.credentials.os.makedirs") as make_dirs:
+
             c.save()
-            if sys.version_info >= (3, 0):
-                m.return_value.write.assert_called_once_with(truth)
-            else:
-                m.return_value.write.assert_called_once_with(truth2)
+
+            make_dirs.assert_called_once_with(streamlit_root_path)
+            open.return_value.write.assert_called_once_with(truth)
 
     @patch("streamlit.credentials.util.get_streamlit_file_path", mock_get_path)
     def test_Credentials_activate_already_activated(self):
@@ -239,6 +238,7 @@ class CredentialsClassTest(unittest.TestCase):
             patched_prompt.side_effect = ["user@domain.com"]
             c.activate()
             patched_save.assert_called_once()
+
             self.assertEqual(c.activation.email, "user@domain.com")
             self.assertEqual(c.activation.is_valid, True)
 

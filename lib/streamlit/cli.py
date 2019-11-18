@@ -23,14 +23,17 @@ from streamlit.compatibility import setup_2_3_shims
 
 setup_2_3_shims(globals())
 
+from streamlit import config as _config
+
 import os
 import click
 
 import streamlit
-from streamlit.credentials import Credentials
+from streamlit.credentials import Credentials, check_credentials
 from streamlit import version
+from streamlit import util
 import streamlit.bootstrap as bootstrap
-
+from streamlit.case_converters import to_snake_case
 
 LOG_LEVELS = ["error", "warning", "info", "debug"]
 
@@ -50,7 +53,76 @@ NEW_VERSION_TEXT = """
 }
 
 
-@click.group()
+def _convert_config_option_to_click_option(config_option):
+    """Composes given config option options as options for click lib."""
+    option = "--{}".format(config_option.key)
+    param = config_option.key.replace(".", "_")
+    description = config_option.description
+    if config_option.deprecated:
+        description += "\n {} - {}".format(
+            config_option.deprecation_text, config_option.deprecation_date
+        )
+    envvar = "STREAMLIT_{}".format(to_snake_case(param).upper())
+
+    return {
+        "param": param,
+        "description": description,
+        "type": config_option.type,
+        "option": option,
+        "envvar": envvar,
+    }
+
+
+def configurator_options(func):
+    """Decorator that adds config param keys to click dynamically."""
+    for _, value in reversed(_config._config_options.items()):
+        parsed_parameter = _convert_config_option_to_click_option(value)
+        config_option = click.option(
+            parsed_parameter["option"],
+            parsed_parameter["param"],
+            help=parsed_parameter["description"],
+            type=parsed_parameter["type"],
+            show_envvar=True,
+            envvar=parsed_parameter["envvar"],
+        )
+        func = config_option(func)
+    return func
+
+
+def _apply_config_options_from_cli(kwargs):
+    """The "streamlit run" command supports passing Streamlit's config options
+    as flags.
+
+    This function reads through all config flags, massage them, and
+    pass them to _set_config() overriding default values and values set via
+    config.toml file
+
+    """
+    for config_option in kwargs:
+        if kwargs[config_option] is not None:
+            config_option_def_key = config_option.replace("_", ".")
+
+            _config._set_option(
+                config_option_def_key,
+                kwargs[config_option],
+                "command-line argument or environment variable",
+            )
+
+
+# Fetch remote file at url_path to script_path
+def _download_remote(script_path, url_path):
+    import requests
+
+    with open(script_path, "wb") as fp:
+        try:
+            resp = requests.get(url_path)
+            resp.raise_for_status()
+            fp.write(resp.content)
+        except requests.exceptions.RequestException as e:
+            raise click.BadParameter(("Unable to fetch {}.\n{}".format(url_path, e)))
+
+
+@click.group(context_settings={"auto_envvar_prefix": "STREAMLIT"})
 @click.option("--log_level", show_default=True, type=click.Choice(LOG_LEVELS))
 @click.version_option(prog_name="Streamlit")
 @click.pass_context
@@ -104,11 +176,14 @@ def main_docs():
 
 
 @main.command("hello")
-def main_hello():
+@configurator_options
+def main_hello(**kwargs):
     """Runs the Hello World script."""
-    import streamlit.hello
+    from streamlit.hello import hello
 
-    filename = streamlit.hello.__file__
+    _apply_config_options_from_cli(kwargs)
+
+    filename = hello.__file__
 
     # For Python 2 when Streamlit is actually installed (make install rather
     # than make develop).
@@ -119,39 +194,36 @@ def main_hello():
 
 
 @main.command("run")
-@click.argument("file_or_url", required=True)
+@configurator_options
+@click.argument("target", required=True, envvar="STREAMLIT_RUN_TARGET")
 @click.argument("args", nargs=-1)
-def main_run(file_or_url, args=None):
+def main_run(target, args=None, **kwargs):
     """Run a Python script, piping stderr to Streamlit.
-    The script can be local or it can be an url. In the
-    latter case, streamlit will download the script to a
-    temporary file and runs this file.
+
+    The script can be local or it can be an url. In the latter case, Streamlit
+    will download the script to a temporary file and runs this file.
+
     """
     from validators import url
 
-    if url(file_or_url):
-        import tempfile
-        import requests
+    _apply_config_options_from_cli(kwargs)
 
-        with tempfile.NamedTemporaryFile() as fp:
-            try:
-                resp = requests.get(file_or_url)
-                resp.raise_for_status()
-                fp.write(resp.content)
-                # flush since we are reading the file within the with block
-                fp.flush()
-            except requests.exceptions.RequestException as e:
-                raise click.BadParameter(
-                    ("Unable to fetch {}.\n{}".format(file_or_url, e))
-                )
-            # this is called within the with block to make sure the temp file
-            # is not deleted
-            _main_run(fp.name, args)
+    if url(target):
+        from streamlit.temporary_directory import TemporaryDirectory
 
+        with TemporaryDirectory() as temp_dir:
+            from urllib.parse import urlparse
+
+            path = urlparse(target).path
+            script_path = os.path.join(temp_dir, path.strip("/").rsplit("/", 1)[-1])
+            # if this is a GitHub/Gist blob url, convert to a raw URL first.
+            target = util.process_gitblob_url(target)
+            _download_remote(script_path, target)
+            _main_run(script_path, args)
     else:
-        if not os.path.exists(file_or_url):
-            raise click.BadParameter("File does not exist: {}".format(file_or_url))
-        _main_run(file_or_url, args)
+        if not os.path.exists(target):
+            raise click.BadParameter("File does not exist: {}".format(target))
+        _main_run(target, args)
 
 
 # Utility function to compute the command line as a string
@@ -170,7 +242,7 @@ def _main_run(file, args=[]):
     streamlit._is_running_with_streamlit = True
 
     # Check credentials.
-    Credentials.get_current().check_activated(auto_resolve=True)
+    check_credentials()
 
     # Notify if streamlit is out of date.
     if version.should_show_new_version_notice():
@@ -231,11 +303,13 @@ def config():
 
 
 @config.command("show")
-def config_show():
+@configurator_options
+def config_show(**kwargs):
     """Show all of Streamlit's config settings."""
-    from streamlit import config
 
-    config.show_config()
+    _apply_config_options_from_cli(kwargs)
+
+    _config.show_config()
 
 
 # SUBCOMMAND: activate

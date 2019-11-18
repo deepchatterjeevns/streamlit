@@ -27,9 +27,13 @@ import inspect
 import io
 import os
 import sys
+import textwrap
 
 import streamlit as st
+from streamlit import config
 from streamlit import util
+from streamlit import type_util
+from streamlit.folder_black_list import FolderBlackList
 from streamlit.compatibility import setup_2_3_shims
 
 if sys.version_info >= (3, 0):
@@ -60,7 +64,7 @@ Context = namedtuple("Context", ["globals", "cells", "varnames"])
 
 
 def _is_magicmock(obj):
-    return util.is_type(obj, "unittest.mock.MagicMock") or util.is_type(
+    return type_util.is_type(obj, "unittest.mock.MagicMock") or type_util.is_type(
         obj, "mock.mock.MagicMock"
     )
 
@@ -111,8 +115,7 @@ def _key(obj, context):
         return (
             isinstance(obj, bytes)
             or isinstance(obj, bytearray)
-            or isinstance(obj, bytes)
-            or isinstance(obj, string_types)
+            or isinstance(obj, string_types)  # noqa: F821
             or isinstance(obj, float)
             or isinstance(obj, int)
             or isinstance(obj, bool)
@@ -131,8 +134,8 @@ def _key(obj, context):
             return ("__l", tuple(obj))
 
     if (
-        util.is_type(obj, "pandas.core.frame.DataFrame")
-        or util.is_type(obj, "numpy.ndarray")
+        type_util.is_type(obj, "pandas.core.frame.DataFrame")
+        or type_util.is_type(obj, "numpy.ndarray")
         or inspect.isbuiltin(obj)
         or inspect.isroutine(obj)
         or inspect.iscode(obj)
@@ -143,14 +146,39 @@ def _key(obj, context):
 
 
 def _hashing_error_message(start):
-    return (
-        start,
-        "\n\n**More information:** to prevent unexpected behavior, Streamlit tries to detect mutations in cached objects so it can alert the user if needed. However, something went wrong while performing this check.\n\n"
-        "Please [file a bug](https://github.com/streamlit/streamlit/issues/new/choose).\n\n"
-        "To stop this warning from showing in the meantime, try one of the following:\n"
-        "* **Preferred:** modify your code to avoid using this type of object.\n"
-        "* Or add the argument `ignore_hash=True` to the `st.cache` decorator.",
-    )
+    return textwrap.dedent(
+        """
+        %(start)s
+
+        **More information:** to prevent unexpected behavior, Streamlit tries
+        to detect mutations in cached objects defined in your local files so
+        it can alert you when the cache is used incorrectly. However, something
+        went wrong while performing this check.
+
+        This error can occur when your virtual environment lives in the same
+        folder as your project, since that makes it hard for Streamlit to
+        understand which files it should check. If you think that's what caused
+        this, please add the following to `~/.streamlit/config.toml`:
+
+        ```toml
+        [server]
+        folderWatchBlacklist = ['foldername']
+        ```
+
+        ...where `foldername` is the relative or absolute path to the folder
+        where you put your virtual environment.
+
+        Otherwise, please [file a
+        bug here](https://github.com/streamlit/streamlit/issues/new/choose).
+
+        To stop this warning from showing in the meantime, try one of the
+        following:
+
+        * **Preferred:** modify your code to avoid using this type of object.
+        * Or add the argument `allow_output_mutation=True` to the `st.cache` decorator.
+    """
+        % {"start": start}
+    ).strip("\n")
 
 
 class CodeHasher:
@@ -171,6 +199,10 @@ class CodeHasher:
             self.hasher = hasher
         else:
             self.hasher = hashlib.new(name)
+
+        self._folder_black_list = FolderBlackList(
+            config.get_option("server.folderWatchBlacklist")
+        )
 
     def update(self, obj, context=None):
         """Update the hash with the provided object."""
@@ -220,7 +252,7 @@ class CodeHasher:
                 return self.to_bytes(id(obj))
             elif isinstance(obj, bytes) or isinstance(obj, bytearray):
                 return obj
-            elif isinstance(obj, string_types):
+            elif isinstance(obj, string_types):  # noqa: F821
                 return obj.encode()
             elif isinstance(obj, float):
                 return self.to_bytes(hash(obj))
@@ -242,9 +274,9 @@ class CodeHasher:
                 return b"bool:1"
             elif obj is False:
                 return b"bool:0"
-            elif util.is_type(obj, "pandas.core.frame.DataFrame") or util.is_type(
-                obj, "pandas.core.series.Series"
-            ):
+            elif type_util.is_type(
+                obj, "pandas.core.frame.DataFrame"
+            ) or type_util.is_type(obj, "pandas.core.series.Series"):
                 import pandas as pd
 
                 if len(obj) >= PANDAS_ROWS_LARGE:
@@ -255,7 +287,7 @@ class CodeHasher:
                     # Use pickle if pandas cannot hash the object for example if
                     # it contains unhashable objects.
                     return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
-            elif util.is_type(obj, "numpy.ndarray"):
+            elif type_util.is_type(obj, "numpy.ndarray"):
                 h = hashlib.new(self.name)
                 self._update(h, obj.shape)
 
@@ -271,7 +303,10 @@ class CodeHasher:
                 return self.to_bytes(obj.__name__)
             elif hasattr(obj, "name") and (
                 isinstance(obj, io.IOBase)
-                or (isinstance(obj.name, string_types) and os.path.exists(obj.name))
+                or (
+                    isinstance(obj.name, string_types)  # noqa: F821
+                    and os.path.exists(obj.name)
+                )
             ):
                 # Hash files as name + last modification date + offset.
                 h = hashlib.new(self.name)
@@ -290,8 +325,11 @@ class CodeHasher:
                     return self.to_bytes("%s.%s" % (obj.__module__, obj.__name__))
 
                 h = hashlib.new(self.name)
-                # TODO: This may be too restrictive for libraries in development.
-                if os.path.abspath(obj.__code__.co_filename).startswith(os.getcwd()):
+                filepath = os.path.abspath(obj.__code__.co_filename)
+
+                if util.file_is_in_folder_glob(
+                    filepath, self._get_main_script_directory()
+                ) and not self._folder_black_list.is_blacklisted(filepath):
                     context = _get_context(obj)
                     if obj.__defaults__:
                         self._update(h, obj.__defaults__, context)
@@ -356,7 +394,8 @@ class CodeHasher:
         consts = [
             n
             for n in code.co_consts
-            if not isinstance(n, string_types) or not n.endswith(".<lambda>")
+            if not isinstance(n, string_types)  # noqa: F821
+            or not n.endswith(".<lambda>")
         ]
         self._update(h, consts, context)
 
@@ -386,3 +425,15 @@ class CodeHasher:
                     self._update(h, name)
 
         return h.digest()
+
+    @staticmethod
+    def _get_main_script_directory():
+        """Get the directory of the main script.
+        """
+        import __main__
+        import os
+
+        # This works because we set __main__.__file__ to the report
+        # script path in ScriptRunner.
+        main_path = __main__.__file__
+        return os.path.dirname(main_path)

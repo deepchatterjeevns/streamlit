@@ -215,7 +215,7 @@ Uber's busiest hours are in New York City.
 To draw this diagram we used Streamlit's native `bar_chart()` method, but it's
 important to know that Streamlit supports more complex charting libraries like
 Altair, Bokeh, Plotly, Matplotlib and more. For a full list, see
-[supported charting libraries](api.html#display-charts).
+[supported charting libraries](../api.html#display-charts).
 
 ## Plot data on a map
 
@@ -276,7 +276,7 @@ slider to the app with the `st.slider()` method.
 ## Use a button to toggle data
 
 Sliders are just one way to dynamically change the composition of your app.
-Let's use the [`st.checkbox`](api.html#streamlit.checkbox) function to add a
+Let's use the [`st.checkbox`](../api.html#streamlit.checkbox) function to add a
 checkbox to your app. We'll use this checkbox to show/hide the raw data
 table at the top of your app.
 
@@ -298,22 +298,9 @@ We're sure you've got your own ideas. When you're done with this tutorial,
 check out all the widgets that Streamlit exposes in our [API
 reference](../api.md).
 
-## Share the app
-
-That's it, you've made it to the end. The last thing to do is share your
-findings. Locate the hamburger menu in the upper-right corner of the app
-and select **Share app**.
-
-```eval_rst
-.. warning::
-   This will not share the interactive version, just the static output.
-   Interactive sharing is in the works, and if you are interested in being in
-   the early beta, send an email to product@streamlit.io.
-```
-
 ## Let's put it all together
 
-So you've made it to the end. Here's the complete script for our interactive
+That's it, you've made it to the end. Here's the complete script for our interactive
 app.
 
 ```eval_rst

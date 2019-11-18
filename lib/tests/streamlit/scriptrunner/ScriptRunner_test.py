@@ -16,8 +16,11 @@
 """Tests ScriptRunner functionality"""
 
 import os
+import sys
 import time
 import unittest
+
+from parameterized import parameterized
 
 from streamlit.DeltaGenerator import DeltaGenerator
 from streamlit.Report import Report
@@ -42,6 +45,18 @@ def _create_widget(id, states):
     return states.widgets[-1]
 
 
+import tokenize
+
+if hasattr(tokenize, "open"):
+    text_utf = "complete! 👨‍🎤"
+    text_no_encoding = text_utf
+    text_latin = "complete! ð\x9f\x91¨â\x80\x8dð\x9f\x8e¤"
+else:
+    text_utf = u"complete! 👨‍🎤"
+    text_no_encoding = u"complete! \xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x8e\xa4"
+    text_latin = text_no_encoding
+
+
 class ScriptRunnerTest(unittest.TestCase):
     def test_startup_shutdown(self):
         """Test that we can create and shut down a ScriptRunner."""
@@ -53,9 +68,16 @@ class ScriptRunnerTest(unittest.TestCase):
         self._assert_events(scriptrunner, [ScriptRunnerEvent.SHUTDOWN])
         self._assert_text_deltas(scriptrunner, [])
 
-    def test_run_script(self):
+    @parameterized.expand(
+        [
+            ("good_script.py", text_utf),
+            ("good_script_no_encoding.py", text_no_encoding),
+            ("good_script_latin_encoding.py", text_latin),
+        ]
+    )
+    def test_run_script(self, filename, text):
         """Tests that we can run a script to completion."""
-        scriptrunner = TestScriptRunner("good_script.py")
+        scriptrunner = TestScriptRunner(filename)
         scriptrunner.enqueue_rerun()
         scriptrunner.start()
         scriptrunner.join()
@@ -69,7 +91,16 @@ class ScriptRunnerTest(unittest.TestCase):
                 ScriptRunnerEvent.SHUTDOWN,
             ],
         )
-        self._assert_text_deltas(scriptrunner, ["complete!"])
+        self._assert_text_deltas(scriptrunner, [text])
+        # The following check is a requirement for the CodeHasher to
+        # work correctly. The CodeHasher is scoped to
+        # files contained in the directory of __main__.__file__, which we
+        # assume is the main script directory.
+        self.assertEqual(
+            scriptrunner._report.script_path,
+            sys.modules["__main__"].__file__,
+            (" ScriptRunner should set the __main__.__file__" "attribute correctly"),
+        )
 
     def test_compile_error(self):
         """Tests that we get an exception event when a script can't compile."""
@@ -234,7 +265,7 @@ class ScriptRunnerTest(unittest.TestCase):
                 ScriptRunnerEvent.SHUTDOWN,
             ],
         )
-        self._assert_text_deltas(scriptrunner, ["complete!"])
+        self._assert_text_deltas(scriptrunner, [text_utf])
 
     def test_multiple_scriptrunners(self):
         """Tests that multiple scriptrunners can run simultaneously."""

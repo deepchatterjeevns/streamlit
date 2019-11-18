@@ -29,7 +29,7 @@ import { HotKeys } from "react-hotkeys"
 
 import {
   ScriptChangedDialog,
-  Props as ScriptChangedProps,
+  Props as ScriptChangedDialogProps,
 } from "components/core/StreamlitDialog/ScriptChangedDialog"
 import { Exception } from "autogen/proto"
 import { Props as SettingsDialogProps, SettingsDialog } from "./SettingsDialog"
@@ -39,7 +39,15 @@ import "./StreamlitDialog.scss"
 
 type PlainEventHandler = () => void
 
-type DialogProps =
+interface SettingsProps extends SettingsDialogProps {
+  type: DialogType.SETTINGS
+}
+
+interface ScriptChangedProps extends ScriptChangedDialogProps {
+  type: DialogType.SCRIPT_CHANGED
+}
+
+export type DialogProps =
   | AboutProps
   | ClearCacheProps
   | RerunScriptProps
@@ -254,10 +262,6 @@ function scriptCompileErrorDialog(
   )
 }
 
-interface SettingsProps extends SettingsDialogProps {
-  type: DialogType.SETTINGS
-}
-
 /**
  * Shows the settings dialog.
  */
@@ -278,7 +282,9 @@ function uploadProgressDialog(props: UploadProgressProps): ReactElement {
   return (
     <BasicDialog onClose={props.onClose}>
       <ModalBody>
-        <div className="streamlit-upload-first-line">Saving app...</div>
+        <div className="streamlit-upload-first-line">
+          Saving app snapshot...
+        </div>
         <div>
           <Progress animated value={props.progress} />
         </div>
@@ -300,13 +306,30 @@ function uploadedDialog(props: UploadedProps): ReactElement {
   return (
     <BasicDialog onClose={props.onClose}>
       <ModalBody>
-        <div className="streamlit-upload-first-line">App saved to:</div>
-        <div id="streamlit-upload-url"> {props.url} </div>
+        <div className="streamlit-upload-first-line">
+          App snapshot saved to:
+        </div>
+        <pre id="streamlit-upload-url">
+          <a href={props.url} target="_blank" rel="noopener noreferrer">
+            {props.url}
+          </a>
+        </pre>
       </ModalBody>
       <ModalFooter>
         <CopyToClipboard text={props.url} onCopy={props.onClose}>
-          <Button outline>Copy to clipboard</Button>
+          <Button outline className="mr-auto">
+            Copy to clipboard
+          </Button>
         </CopyToClipboard>{" "}
+        <Button
+          outline
+          onClick={() => {
+            window.open(props.url, "_blank")
+            props.onClose()
+          }}
+        >
+          Open
+        </Button>
         <Button outline onClick={props.onClose}>
           Done
         </Button>

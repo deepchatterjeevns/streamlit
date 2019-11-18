@@ -18,12 +18,14 @@
 import React from "react"
 import { Map as ImmutableMap } from "immutable"
 import { tableGetRowsAndCols, indexGet, tableGet } from "lib/dataFrameProto"
+import FullScreenWrapper from "components/shared/FullScreenWrapper"
 import { logMessage } from "lib/log"
 
 import embed from "vega-embed"
 import * as vega from "vega"
 
 import "./VegaLiteChart.scss"
+import { Padding } from "vega"
 
 const MagicFields = {
   DATAFRAME_INDEX: "(index)",
@@ -35,6 +37,14 @@ const DEFAULT_DATA_NAME = "source"
  * Horizontal space needed for the embed actions button.
  */
 const EMBED_PADDING = 38
+const DEFAULT_HEIGHT = 200
+const FIX_PADDING_BOTTOM = 20
+
+/**
+ * Fix bug where Vega Lite was vertically-cropping the x-axis in some cases.
+ * For example, in e2e/scripts/add_rows.py
+ */
+const BOTTOM_PADDING = 20
 
 /** Types of dataframe-indices that are supported as x axes. */
 const SUPPORTED_INDEX_TYPES = new Set([
@@ -51,20 +61,24 @@ interface Props {
   element: ImmutableMap<string, any>
 }
 
+interface PropsWithHeight extends Props {
+  height: number | undefined
+}
+
+interface Dimensions {
+  width: number | undefined
+  height: number
+}
+
 interface State {
   error?: Error
 }
 
-class VegaLiteChart extends React.PureComponent<Props, State> {
+class VegaLiteChart extends React.PureComponent<PropsWithHeight, State> {
   /**
    * The Vega view object
    */
   private vegaView: vega.View | undefined
-
-  /**
-   * The width from the parsed Vega-Lite spec.
-   */
-  private specWidth: number | undefined
 
   /**
    * The default data name to add to.
@@ -76,7 +90,7 @@ class VegaLiteChart extends React.PureComponent<Props, State> {
    */
   private element: HTMLDivElement | null = null
 
-  public constructor(props: Props) {
+  public constructor(props: PropsWithHeight) {
     super(props)
 
     this.state = {
@@ -103,14 +117,59 @@ class VegaLiteChart extends React.PureComponent<Props, State> {
     }
   }
 
-  public async componentDidUpdate(prevProps: Props): Promise<void> {
+  public getChartDimensions = (specWidth: number | undefined): Dimensions => {
+    // Width values:
+    //  undefined : let Vega-Lite pick (this is -1 in Python)
+    //          0 : use full width
+    //         >0 : use given width
+    // See docs for DeltaGenerator.vega_lite_chart().
+    const width =
+      specWidth === 0 ? this.props.width - EMBED_PADDING : specWidth
+
+    const height = this.props.height ? this.props.height : DEFAULT_HEIGHT
+
+    return { width, height }
+  }
+
+  public getChartPadding = (padding: Padding): Padding => {
+    if (padding === undefined) {
+      return {
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: FIX_PADDING_BOTTOM,
+      }
+    } else if (typeof padding === "number") {
+      return {
+        top: padding,
+        left: padding,
+        right: padding,
+        bottom: Math.max(padding, FIX_PADDING_BOTTOM),
+      }
+    } else if (padding.bottom !== undefined) {
+      padding.bottom = Math.max(padding.bottom, FIX_PADDING_BOTTOM)
+      return padding
+    } else if (padding.bottom === undefined) {
+      padding.bottom = FIX_PADDING_BOTTOM
+      return padding
+    } else {
+      return 0
+    }
+  }
+
+  public async componentDidUpdate(prevProps: PropsWithHeight): Promise<void> {
     const prevElement = prevProps.element
     const element = this.props.element
 
     const prevSpec = prevElement.get("spec")
     const spec = element.get("spec")
 
-    if (!this.vegaView || prevSpec !== spec) {
+    if (
+      !this.vegaView ||
+      prevSpec !== spec ||
+      prevProps.width !== this.props.width ||
+      prevProps.height !== this.props.height
+    ) {
       logMessage("Vega spec changed.")
       try {
         await this.createView()
@@ -118,10 +177,6 @@ class VegaLiteChart extends React.PureComponent<Props, State> {
         this.setState({ error })
       }
       return
-    }
-
-    if (prevProps.width !== this.props.width && this.specWidth === 0) {
-      this.vegaView.width(this.props.width - EMBED_PADDING)
     }
 
     const prevData = prevElement.get("data")
@@ -232,8 +287,19 @@ class VegaLiteChart extends React.PureComponent<Props, State> {
 
     const spec = JSON.parse(el.get("spec"))
 
-    if (spec.width === 0) {
-      spec.width = this.props.width - EMBED_PADDING
+    const { width, height } = this.getChartDimensions(spec.width as (
+      | number
+      | undefined))
+    spec.width = width
+    spec.height = height
+    spec.padding = this.getChartPadding(spec.padding)
+
+    if (!spec.padding) {
+      spec.padding = {}
+    }
+
+    if (spec.padding.bottom == null) {
+      spec.padding.bottom = BOTTOM_PADDING
     }
 
     if (spec.datasets) {
@@ -388,6 +454,10 @@ function dataIsAnAppendOfPrev(
     return false
   }
 
+  if (prevNumRows === 0) {
+    return false
+  }
+
   const df0 = prevData.get("data")
   const df1 = data.get("data")
   const c = numCols - 1
@@ -405,4 +475,17 @@ function dataIsAnAppendOfPrev(
   return true
 }
 
-export default VegaLiteChart
+class WithFullScreenWrapper extends React.Component<Props> {
+  render(): JSX.Element {
+    const { element, width } = this.props
+    return (
+      <FullScreenWrapper width={width}>
+        {({ width, height }) => (
+          <VegaLiteChart element={element} width={width} height={height} />
+        )}
+      </FullScreenWrapper>
+    )
+  }
+}
+
+export default WithFullScreenWrapper

@@ -91,9 +91,7 @@ html_theme = "sphinx_rtd_theme"
 # further.  For a list of options available for each theme, see the
 # documentation.
 
-html_theme_options = {
-    "analytics_id": "UA-122023594-3",
-}
+html_theme_options = {"analytics_id": "UA-122023594-3"}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -199,6 +197,7 @@ epub_exclude_files = ["search.html"]
 autodoc_default_flags = ["members"]
 autosummary_generate = True
 html_copy_source = False
+github_doc_root = "https://github.com/streamlit/streamlit/tree/master/docs"
 
 # At the bottom of conf.py
 def setup(app):

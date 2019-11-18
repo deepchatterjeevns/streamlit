@@ -29,8 +29,10 @@ import numpy as np
 import pandas as pd
 
 from streamlit import __version__
+from streamlit.errors import StreamlitAPIException
 from streamlit.proto.Balloons_pb2 import Balloons
-from streamlit.proto.Text_pb2 import Text
+
+from streamlit.proto.Alert_pb2 import Alert
 from tests import testutil
 import streamlit as st
 
@@ -126,6 +128,37 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         self.assertEqual(el.audio.data, "ESIzRFVm")
         self.assertEqual(el.audio.format, "audio/wav")
 
+        # test using a URL instead of data
+        some_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
+        st.audio(some_url)
+
+        el = self.get_delta_from_queue().new_element
+        self.assertEqual(el.audio.url, some_url)
+
+        # Test that a non-URL string doesn't load into URL param.
+        non_url = "blah"
+        try:
+            # Python 2 behavior
+            st.audio(non_url)
+            el = self.get_delta_from_queue().new_element
+            assert not el.audio.url
+            assert el.audio.data == "YmxhaA=="  # "blah" to base64 encoded payload
+        except TypeError:
+            # Python 3 behavior
+            assert True
+
+    def test_st_audio_options(self):
+        """Test st.audio with options."""
+        fake_audio_data = "\x11\x22\x33\x44\x55\x66".encode("utf-8")
+        st.audio(fake_audio_data, format="audio/mp3", start_time=10)
+
+        el = self.get_delta_from_queue().new_element
+        # Manually base64 encoded payload above via
+        # base64.b64encode(bytes('\x11\x22\x33\x44\x55\x66'.encode('utf-8')))
+        self.assertEqual(el.audio.data, "ESIzRFVm")
+        self.assertEqual(el.audio.format, "audio/mp3")
+        self.assertEqual(el.audio.start_time, 10)
+
     def test_st_balloons(self):
         """Test st.balloons."""
         with patch("random.randrange") as p:
@@ -169,8 +202,7 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         )
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, expected.strip())
-        self.assertEqual(el.text.format, Text.MARKDOWN)
+        self.assertEqual(el.markdown.body, expected.strip())
 
     def test_st_dataframe(self):
         """Test st.dataframe."""
@@ -196,8 +228,8 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         st.error("some error")
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, "some error")
-        self.assertEqual(el.text.format, Text.ERROR)
+        self.assertEqual(el.alert.body, "some error")
+        self.assertEqual(el.alert.format, Alert.ERROR)
 
     def test_st_exception(self):
         """Test st.exception."""
@@ -225,8 +257,7 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         st.header("some header")
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, "## some header")
-        self.assertEqual(el.text.format, Text.MARKDOWN)
+        self.assertEqual(el.markdown.body, "## some header")
 
     def test_st_help(self):
         """Test st.help."""
@@ -316,7 +347,7 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
 
     def test_st_image_bad_width(self):
         """Test st.image with bad width."""
-        with self.assertRaises(RuntimeError) as ctx:
+        with self.assertRaises(StreamlitAPIException) as ctx:
             st.image("does/not/exist", width=-1234)
 
         self.assertTrue("Image width must be positive." in str(ctx.exception))
@@ -326,16 +357,15 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         st.info("some info")
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, "some info")
-        self.assertEqual(el.text.format, Text.INFO)
+        self.assertEqual(el.alert.body, "some info")
+        self.assertEqual(el.alert.format, Alert.INFO)
 
     def test_st_json(self):
         """Test st.json."""
         st.json('{"some": "json"}')
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, '{"some": "json"}')
-        self.assertEqual(el.text.format, Text.JSON)
+        self.assertEqual(el.json.body, '{"some": "json"}')
 
     def test_st_line_chart(self):
         """Test st.line_chart."""
@@ -363,8 +393,14 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         st.markdown("    some markdown  ")
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, "some markdown")
-        self.assertEqual(el.text.format, Text.MARKDOWN)
+        self.assertEqual(el.markdown.body, "some markdown")
+
+        # test the unsafe_allow_html keyword
+        st.markdown("    some markdown  ", unsafe_allow_html=True)
+
+        el = self.get_delta_from_queue().new_element
+        self.assertEqual(el.markdown.body, "some markdown")
+        self.assertTrue(el.markdown.allow_html)
 
     def test_st_progress(self):
         """Test st.progress."""
@@ -492,16 +528,15 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         st.subheader("some subheader")
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, "### some subheader")
-        self.assertEqual(el.text.format, Text.MARKDOWN)
+        self.assertEqual(el.markdown.body, "### some subheader")
 
     def test_st_success(self):
         """Test st.success."""
         st.success("some success")
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, "some success")
-        self.assertEqual(el.text.format, Text.SUCCESS)
+        self.assertEqual(el.alert.body, "some success")
+        self.assertEqual(el.alert.format, Alert.SUCCESS)
 
     def test_st_table(self):
         """Test st.table."""
@@ -522,15 +557,13 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
 
         el = self.get_delta_from_queue().new_element
         self.assertEqual(el.text.body, "some text")
-        self.assertEqual(el.text.format, Text.PLAIN)
 
     def test_st_title(self):
         """Test st.title."""
         st.title("some title")
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, "# some title")
-        self.assertEqual(el.text.format, Text.MARKDOWN)
+        self.assertEqual(el.markdown.body, "# some title")
 
     def test_st_vega_lite_chart(self):
         """Test st.vega_lite_chart."""
@@ -550,31 +583,57 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         self.assertEqual(el.video.data, "ESIzRFVm")
         self.assertEqual(el.video.format, "video/mp4")
 
+        # Test with an arbitrary URL in place of data
+        some_url = "http://www.marmosetcare.com/video/in-the-wild/intro.webm"
+        st.video(some_url)
+        el = self.get_delta_from_queue().new_element
+        self.assertEqual(el.video.url, some_url)
+
+        # Test with sufficiently varied youtube URLs
+        yt_urls = (
+            "https://youtu.be/_T8LGqJtuGc",
+            "https://www.youtube.com/watch?v=kmfC-i9WgH0",
+            "https://www.youtube.com/embed/sSn4e1lLVpA",
+        )
+        yt_embeds = (
+            "https://www.youtube.com/embed/_T8LGqJtuGc",
+            "https://www.youtube.com/embed/kmfC-i9WgH0",
+            "https://www.youtube.com/embed/sSn4e1lLVpA",
+        )
+        # url should be transformed into an embed link (or left alone).
+        for x in range(0, len(yt_urls)):
+            st.video(yt_urls[x])
+            el = self.get_delta_from_queue().new_element
+            self.assertEqual(el.video.url, yt_embeds[x])
+
+        # Test that a non-URL string doesn't load the URL property
+        non_url = "blah"
+        try:
+            # Python 2 behavior
+            st.video(non_url)
+            el = self.get_delta_from_queue().new_element
+            assert not el.video.url
+            assert el.video.data == "YmxhaA=="  # "blah" to base64 encoded payload
+        except TypeError:
+            # Python 3 behavior
+            assert True
+
+    def test_st_video_options(self):
+        """Test st.video with options."""
+        fake_video_data = "\x11\x22\x33\x44\x55\x66".encode("utf-8")
+        st.video(fake_video_data, format="video/mp4", start_time=10)
+
+        el = self.get_delta_from_queue().new_element
+        # Manually base64 encoded payload above via
+        # base64.b64encode(bytes('\x11\x22\x33\x44\x55\x66'.encode('utf-8')))
+        self.assertEqual(el.video.data, "ESIzRFVm")
+        self.assertEqual(el.video.format, "video/mp4")
+        self.assertEqual(el.video.start_time, 10)
+
     def test_st_warning(self):
         """Test st.warning."""
         st.warning("some warning")
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.text.body, "some warning")
-        self.assertEqual(el.text.format, Text.WARNING)
-
-    def test_st_text_exception(self):
-        """Test st._text_exception."""
-        data = {
-            "type": "ModuleNotFoundError",
-            "message": "No module named 'numpy'",
-            "stack_trace": [
-                "Traceback (most recent call last):",
-                '  File "<stdin>", line 1, in <module>',
-                "ModuleNotFoundError: No module named 'numpy'",
-            ],
-        }
-
-        st._text_exception(
-            data.get("type"), data.get("message"), data.get("stack_trace")
-        )
-
-        el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.exception.type, data.get("type"))
-        self.assertEqual(el.exception.message, data.get("message"))
-        self.assertEqual(el.exception.stack_trace, data.get("stack_trace"))
+        self.assertEqual(el.alert.body, "some warning")
+        self.assertEqual(el.alert.format, Alert.WARNING)

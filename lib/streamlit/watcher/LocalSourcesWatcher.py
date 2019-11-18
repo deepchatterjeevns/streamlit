@@ -25,8 +25,10 @@ except ImportError:
     # Python 3
     import importlib
 
+from streamlit import compatibility
 from streamlit import config
 from streamlit import util
+from streamlit.folder_black_list import FolderBlackList
 
 from streamlit.logger import get_logger
 
@@ -74,10 +76,10 @@ class LocalSourcesWatcher(object):
         self._on_file_changed = on_file_changed
         self._is_closed = False
 
-        self._folder_blacklist = config.get_option("server.folderWatchBlacklist")
-
-        # Blacklist some additional folders, using glob syntax.
-        self._folder_blacklist.extend(DEFAULT_FOLDER_BLACKLIST)
+        # Blacklist for folders that should not be watched
+        self._folder_black_list = FolderBlackList(
+            config.get_option("server.folderWatchBlacklist")
+        )
 
         # A dict of filepath -> WatchedModule.
         self._watched_modules = {}
@@ -92,10 +94,21 @@ class LocalSourcesWatcher(object):
             LOGGER.error("Received event for non-watched file", filepath)
             return
 
-        wm = self._watched_modules[filepath]
-
-        if wm.module_name is not None and wm.module_name in sys.modules:
-            del sys.modules[wm.module_name]
+        # Workaround:
+        # Delete all watched modules so we can guarantee changes to the
+        # updated module are reflected on reload.
+        #
+        # In principle, for reloading a given module, we only need to unload
+        # the module itself and all of the modules which import it (directly
+        # or indirectly) such that when we exec the application code, the
+        # changes are reloaded and reflected in the running application.
+        #
+        # However, determining all import paths for a given loaded module is
+        # non-trivial, and so as a workaround we simply unload all watched
+        # modules.
+        for wm in self._watched_modules.values():
+            if wm.module_name is not None and wm.module_name in sys.modules:
+                del sys.modules[wm.module_name]
 
         self._on_file_changed()
 
@@ -106,9 +119,21 @@ class LocalSourcesWatcher(object):
         self._is_closed = True
 
     def _register_watcher(self, filepath, module_name):
-        wm = WatchedModule(
-            watcher=FileWatcher(filepath, self.on_file_changed), module_name=module_name
-        )
+        if compatibility.is_running_py3():
+            ErrorType = PermissionError
+        else:
+            ErrorType = OSError
+
+        try:
+            wm = WatchedModule(
+                watcher=FileWatcher(filepath, self.on_file_changed),
+                module_name=module_name,
+            )
+        except ErrorType:
+            # If you don't have permission to read this file, don't even add it
+            # to watchers.
+            return
+
         self._watched_modules[filepath] = wm
 
     def _deregister_watcher(self, filepath):
@@ -158,16 +183,13 @@ class LocalSourcesWatcher(object):
                     # .origin is 'built-in'.
                     continue
 
-                is_in_blacklisted_folder = any(
-                    _file_is_in_folder(filepath, blacklisted_folder)
-                    for blacklisted_folder in self._folder_blacklist
-                )
-
-                if is_in_blacklisted_folder:
+                if self._folder_black_list.is_blacklisted(filepath):
                     continue
 
                 file_is_new = filepath not in self._watched_modules
-                file_is_local = _file_is_in_folder(filepath, self._report.script_folder)
+                file_is_local = util.file_is_in_folder_glob(
+                    filepath, self._report.script_folder
+                )
 
                 local_filepaths.append(filepath)
 
@@ -191,12 +213,3 @@ class LocalSourcesWatcher(object):
         for filepath in watched_modules:
             if filepath not in local_filepaths:
                 self._deregister_watcher(filepath)
-
-
-def _file_is_in_folder(filepath, folderpath_glob):
-    # Strip trailing slash if it exists
-    if folderpath_glob.endswith("/"):
-        folderpath_glob = folderpath_glob[:-1]
-
-    file_dir = os.path.dirname(filepath)
-    return fnmatch.fnmatch(file_dir, folderpath_glob)

@@ -18,11 +18,12 @@
 /// <reference types="cypress" />
 
 describe("Dataframes with different sizes", () => {
+  // All widths are 2px smaller than actual width we set, due to 1px border.
   const expected = [
-    { width: "695px", height: "300px" },
-    { width: "247px", height: "150px" },
-    { width: "247px", height: "300px" },
-    { width: "695px", height: "150px" }
+    { width: "696px", height: "300px" },
+    { width: "248px", height: "150px" },
+    { width: "248px", height: "300px" },
+    { width: "696px", height: "150px" }
   ];
   before(() => {
     cy.visit("http://localhost:3000/");
@@ -32,7 +33,8 @@ describe("Dataframes with different sizes", () => {
     cy.get(".element-container .stDataFrame")
       .should("have.length", 4)
       .each((el, idx) => {
-        cy.wrap(el)
+        return cy
+          .wrap(el)
           .should("have.css", "width", expected[idx].width)
           .should("have.css", "height", expected[idx].height);
       });

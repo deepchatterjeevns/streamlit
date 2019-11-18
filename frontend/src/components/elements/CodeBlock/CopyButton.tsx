@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import React, { PureComponent } from "react"
 import Clipboard from "clipboard"
+import React, { PureComponent } from "react"
 import { Copy as CopyIcon } from "react-feather"
 import "./CopyButton.scss"
 
@@ -28,14 +28,14 @@ class CopyButton extends PureComponent<Props> {
   private button = React.createRef<HTMLButtonElement>()
   private clipboard: ClipboardJS | null = null
 
-  public componentDidMount = () => {
+  public componentDidMount = (): void => {
     const node = this.button.current
     if (node !== null) {
       this.clipboard = new Clipboard(node)
     }
   }
 
-  public componentWillUnmount = () => {
+  public componentWillUnmount = (): void => {
     if (this.clipboard !== null) {
       this.clipboard.destroy()
     }
@@ -43,9 +43,9 @@ class CopyButton extends PureComponent<Props> {
 
   public render = (): React.ReactNode => (
     <button
-      ref={this.button}
+      className="overlayBtn"
       title="Copy to clipboard"
-      className="copyBtn"
+      ref={this.button}
       data-clipboard-text={this.props.text}
     >
       <CopyIcon size="16" />

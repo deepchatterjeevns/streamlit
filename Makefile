@@ -1,3 +1,7 @@
+# Make uses /bin/sh by default, but we are using some bash features.  On Ubuntu
+# /bin/sh is POSIX compliant, ie it's not bash.  So let's be explicit:
+SHELL=/bin/bash
+
 # Black magic to get module directories
 PYTHON_MODULES := $(foreach initpy, $(foreach dir, $(wildcard lib/*), $(wildcard $(dir)/__init__.py)), $(realpath $(dir $(initpy))))
 PY_VERSION := $(shell python -c 'import platform; print(platform.python_version())')
@@ -16,8 +20,10 @@ all: init install build develop
 # Get dependencies and install Streamlit into Python environment -- but do not build the frontend.
 all-devel: init install develop
 	@echo ""
-	@echo "    The frontend has *not* been rebuilt, so shared reports won't work."
-	@echo "    If you need to test report sharing, run 'make build' first!"
+	@echo "    The frontend has *not* been rebuilt."
+	@echo "    If you need to make a wheel file or test S3 sharing, run:"
+	@echo ""
+	@echo "    make build"
 	@echo ""
 
 .PHONY: init
@@ -239,6 +245,8 @@ react-build:
 	cd frontend/ ; yarn run build
 	rsync -av --delete --delete-excluded --exclude=reports \
 		frontend/build/ lib/streamlit/static/
+	# If you're debugging sharing, you may want to comment this out so that
+	# sourcemaps exist.
 	find lib/streamlit/static -type 'f' -iname '*.map' | xargs rm -fv
 
 .PHONY: scssvars
@@ -254,8 +262,7 @@ scssvars: react-init
 # Lint the JS code. Saves results to test-reports/eslint/eslint.xml.
 jslint:
 	@# max-warnings 0 means we'll exit with a non-zero status on any lint warning
-	@# HK: I'm removing `max-warnings 0` until we convert all our JavaScript
-	@# files to TypeScript.
+ifndef CIRCLECI
 	cd frontend; \
 		./node_modules/.bin/eslint \
 			--ext .js \
@@ -263,9 +270,21 @@ jslint:
 			--ext .ts \
 			--ext .tsx \
 			--ignore-pattern 'src/autogen/*' \
+			--max-warnings 0 \
+			./src
+else
+	cd frontend; \
+		./node_modules/.bin/eslint \
+			--ext .js \
+			--ext .jsx \
+			--ext .ts \
+			--ext .tsx \
+			--ignore-pattern 'src/autogen/*' \
+			--max-warnings 0 \
 			--format junit \
 			--output-file test-reports/eslint/eslint.xml \
 			./src
+endif #CIRCLECI
 
 .PHONY: jsformat
 # Runs "Prettier" on our JavaScript and TypeScript code to fix formatting
